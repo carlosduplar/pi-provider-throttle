@@ -1,0 +1,52 @@
+{
+	"name": "pi-provider-throttle",
+	"version": "1.0.0",
+	"description": "Per-provider request pacing for Pi coding agent, persisted across sessions. Keeps rate-limited endpoints (e.g. NVIDIA NIM 40 RPM) from throwing 429s without touching providers that are fine with fast traffic.",
+	"license": "MIT",
+	"author": "Carlos Duplar",
+	"type": "module",
+	"keywords": [
+		"pi",
+		"pi-package",
+		"pi-extension",
+		"throttle",
+		"rate-limit",
+		"provider",
+		"pacing",
+		"nvidia",
+		"nim",
+		"429"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/carlosduplar/pi-provider-throttle.git"
+	},
+	"homepage": "https://github.com/carlosduplar/pi-provider-throttle#readme",
+	"bugs": {
+		"url": "https://github.com/carlosduplar/pi-provider-throttle/issues"
+	},
+	"engines": {
+		"node": ">=22.15.0"
+	},
+	"files": [
+		"extensions",
+		"README.md",
+		"LICENSE",
+		"CHANGELOG.md"
+	],
+	"pi": {
+		"extensions": ["./extensions"]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "0.85.1",
+		"@types/node": "^24.7.2",
+		"typescript": "^5.9.3"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"test": "node --experimental-strip-types --no-warnings --test \"test/*.test.ts\""
+	}
+}
