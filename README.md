@@ -2,9 +2,10 @@
 
 <div align="center">
 
-<img alt="pi-provider-throttle — pace each LLM provider, stop the 429s" src="https://raw.githubusercontent.com/carlosduplar/pi-provider-throttle/main/assets/pi-provider-throttle.jpg" width="640" />
+<img alt="pi-provider-throttle — pace each LLM provider, stop the 429s" src="https://raw.githubusercontent.com/carlosduplar/pi-provider-throttle/main/assets/pi-provider-throttle.jpg" width="800" />
 
-Pace LLM requests per provider across Pi sessions — throttling, not request blasting. Keeps rate-limited endpoints (think NVIDIA NIM at 40 RPM) from throwing 429s, without slowing down providers that are perfectly happy with rapid traffic.
+Pace LLM requests per provider across Pi sessions — throttling, not request blasting. 
+Keeps rate-limited endpoints (think NVIDIA NIM at 40 RPM) from throwing 429s, without slowing down providers that are perfectly happy with rapid traffic.
 
 [![npm version](https://img.shields.io/npm/v/pi-provider-throttle.svg)](https://www.npmjs.com/package/pi-provider-throttle)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -45,10 +46,10 @@ Handy reference when picking intervals. RPM floors assume a serial workload — 
 | NVIDIA NIM | 40 RPM | 1.5s | 2s |
 | OpenRouter `:free` models | 20 requests/minute; 50/day without a ≥$10 credit balance, 1,000/day with one | 3s | 3.5–4s |
 | Cohere (trial keys) | 1,000 calls/month (not RPM-centered — check per-endpoint limits) | — | 10s is a safe scout for burst-heavy chats |
-| Google Gemini (AI Studio) | model-dependent per-model table — verify current numbers at [the source](https://ai.google.dev/gemini-api/docs/rate-limits) (community reporting commonly cites ~10–15 RPM on Flash-class models); we deliberately don't freeze a number here | — | start at 7.5s and tune down |
-| Groq, GitHub Models, Cerebras | browser-rendered per-model tables — check each page directly | — | — |
+| Google Gemini (AI Studio) | model-dependent per-model table — verify current numbers at [the source](https://ai.google.dev/gemini-api/docs/rate-limits) | — | start at 7.5s and tune down |
+| Groq, GitHub Models, Cerebras | rate limits per-model — check each page directly | — | — |
 
-Figures are snapshots (last checked 2026-09-08) — free tiers migrate quarterly. `provider_throttle list` inside a session shows what you've actually configured; the docs links above are the sources of truth for the caps themselves.
+Figures are snapshots (last checked 2026-09-08) — free tiers migrate quarterly. `provider_throttle list` inside a session shows what you've actually configured.
 
 ## Install
 
