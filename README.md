@@ -4,7 +4,7 @@
 
 <img alt="pi-provider-throttle — pace each LLM provider, stop the 429s" src="https://raw.githubusercontent.com/carlosduplar/pi-provider-throttle/main/assets/pi-provider-throttle.jpg" width="800" />
 
-Pace LLM requests per provider across Pi sessions — throttling, not request blasting. 
+Pace LLM requests per provider across Pi sessions — throttling, not request blasting.
 Keeps rate-limited endpoints (think NVIDIA NIM at 40 RPM) from throwing 429s, without slowing down providers that are perfectly happy with rapid traffic.
 
 [![npm version](https://img.shields.io/npm/v/pi-provider-throttle.svg)](https://www.npmjs.com/package/pi-provider-throttle)
