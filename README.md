@@ -14,7 +14,7 @@ Keeps rate-limited endpoints (think NVIDIA NIM at 40 RPM) from throwing 429s, wi
 
 ## Why throttle?
 
-Every LLM provider enforces a rate limit: responses per account per minute. When a provider answers with **HTTP 429 Too Many Requests**, the turn dies and the agent loop has to retry — wasted wall time and possibly a worse key reputation. This extension prevents the 429 from happening at all: each provider gets its own pacing floor, so calls aimed at tight quotas never fire back-to-back. Providers without quotas are untouched.
+Picture it: the agent is halfway through a twenty-step change, everything is clicking — and then the run stops dead on **429 Too Many Requests**. Your free tier burned its quota for the minute, and the next window is a countdown you can't skip. You wait. You reread the step it died on. Resuming later won't bring back the agent's in-flight context or your attention loop — momentum is what actually expires. Hitting a rate limit isn't a debugging problem; it's a *break your flow and stare at a clock* problem. pi-provider-throttle removes the stall instead of training you to endure it: each provider gets its own pacing floor so your bursts stay inside the quota, and providers without caps stay untouched.
 
 ## Features
 
