@@ -2,6 +2,8 @@
 
 <div align="center">
 
+<img alt="pi-provider-throttle — pace each LLM provider, stop the 429s" src="https://raw.githubusercontent.com/carlosduplar/pi-provider-throttle/main/assets/pi-provider-throttle.jpg" width="640" />
+
 Pace LLM requests per provider across Pi sessions — throttling, not request blasting. Keeps rate-limited endpoints (think NVIDIA NIM at 40 RPM) from throwing 429s, without slowing down providers that are perfectly happy with rapid traffic.
 
 [![npm version](https://img.shields.io/npm/v/pi-provider-throttle.svg)](https://www.npmjs.com/package/pi-provider-throttle)
@@ -41,6 +43,23 @@ pi install npm:pi-provider-throttle
 ```
 
 Then restart your Pi session.
+
+## Using /throttle from the keyboard
+
+Everything the agent tool does, you can drive yourself — usually faster:
+
+```text
+/throttle                        → lists configured providers + which config file is live
+/throttle nvidia_nim 2           → nvidia_nim waits ≥2s between calls (persisted)
+/throttle nvidia_nim 0           → disables nvidia_nim (persisted)
+/throttle config                 → resolved read/write paths + parse health
+```
+
+- Intervals are **seconds between outbound calls**; `0` removes the entry entirely.
+- A successful change updates the status strip immediately (`paced: nvidia_nim 2s`) — no restart.
+- Writes are atomic and refuse to proceed over an unreadable config file, so a bad hand-edit never gets flattened.
+
+Whether keyed or asked for, everything lands in the same persisted config the next request honors.
 
 ## Or just ask pi
 
