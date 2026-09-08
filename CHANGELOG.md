@@ -1,6 +1,7 @@
 # Changelog
 
 ## 1.1.0 — 2026-09-08
+
 - Added: `provider_throttle` agent tool (registerTool) — say `restrict NVIDIA requests to 40 RPM`: free-text provider hints resolve against pi's live model registry (never guessed), rpm converts to a conservative seconds floor, and writes are confirm-gated and routed through the same refusing/atomic save() as `/throttle`. `action: "list"` reports every registered provider with its current pacing.
 - Docs: SEO tuning across README/npm metadata (throttling / rate limit / 429 / NVIDIA free tier wording), new “Or just ask pi” onboarding section.
 - Fix: `delay` now detaches its abort listener on normal completion, so long-lived signals no longer accumulate stale listeners (and Node's MaxListeners warning) across paced calls.
