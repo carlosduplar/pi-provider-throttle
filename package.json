@@ -1,6 +1,6 @@
 {
 	"name": "pi-provider-throttle",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"description": "Per-provider LLM request throttling for the Pi coding agent — persistent seconds-between-calls pacing that prevents 429 Too Many Requests on rate-limited providers (e.g. NVIDIA NIM 40 RPM free tiers) while leaving unaffected providers untouched.",
 	"license": "MIT",
 	"author": "Carlos Duplar",

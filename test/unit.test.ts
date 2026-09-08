@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import {
+	buildCatalog,
 	configPaths,
 	createThrottle,
 	describeError,
@@ -108,6 +109,20 @@ test("matchProviderHint tiers exact → prefix → contains; ties are ambiguous"
 		kind: "ambiguous",
 		ids: ["alpha_provider", "beta_provider"],
 	});
+});
+
+test("buildCatalog unions store-scoped models with eagerly registered providers", () => {
+	const display: Record<string, string> = { nvidia: "NVIDIA NIM", "llama.cpp": "llama.cpp" };
+	const cat = buildCatalog(
+		[{ provider: "nvidia" }, { provider: "nvidia" }, { provider: "mimo" }, {}, { provider: 7 }],
+		["llama.cpp"],
+		(id) => display[id] ?? id,
+	);
+	assert.deepEqual(cat, [
+		{ id: "nvidia", display: "NVIDIA NIM" },
+		{ id: "mimo", display: "mimo" },
+		{ id: "llama.cpp", display: "llama.cpp" },
+	]);
 });
 
 test("resolveProvider long-prefix beats short prefix; exact key wins overall", () => {

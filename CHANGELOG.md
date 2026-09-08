@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1 — 2026-09-08
+
+- Fix: `provider_throttle` builds its provider catalogue from every model visible to the session — `registry.getAll()` unioned with `getRegisteredProviderIds()` — so store-scoped providers (e.g. NVIDIA configured via `models-store.json`) resolve to their exact id instead of bouncing with `Known: llama.cpp`. Reads degrade to registered ids on hosts without `getAll()`; unit + e2e coverage pins the union, dedupe, and failure-skip behavior.
+
 ## 1.1.0 — 2026-09-08
 
 - Added: `provider_throttle` agent tool (registerTool) — say `restrict NVIDIA requests to 40 RPM`: free-text provider hints resolve against pi's live model registry (never guessed), rpm converts to a conservative seconds floor, and writes are confirm-gated and routed through the same refusing/atomic save() as `/throttle`. `action: "list"` reports every registered provider with its current pacing.

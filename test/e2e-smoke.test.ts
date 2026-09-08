@@ -340,7 +340,8 @@ const DISPLAY: Record<string, string> = {
 	anthropic: "Anthropic",
 };
 const registryMock = {
-	getRegisteredProviderIds: () => [...REGISTRY_IDS],
+	getAll: () => REGISTRY_IDS.map((id) => ({ provider: id })),
+	getRegisteredProviderIds: () => ["llama.cpp"],
 	getProviderDisplayName: (id: string) => DISPLAY[id] ?? id,
 };
 
@@ -465,7 +466,7 @@ test("provider_throttle tool end-to-end", async (t) => {
 			});
 			const text = extractText(result);
 			assert.match(text, /No provider resembles "groq"/);
-			assert.match(text, /Known: nvidia_nim, openai, anthropic/);
+			assert.match(text, /Known: nvidia_nim, openai, anthropic, llama\.cpp/);
 			assert.equal(readFileSync(CONFIG, "utf-8"), before);
 		},
 	);

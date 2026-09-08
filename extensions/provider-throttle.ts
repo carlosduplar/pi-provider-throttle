@@ -208,6 +208,29 @@ export function matchProviderHint(
 		: { kind: "ambiguous", ids: winners };
 }
 
+/**
+ * Union of provider ids a session can actually call. Store-scoped models
+ * (user's models-store.json) surface via registry.getAll(); native agents
+ * register eagerly and appear only in getRegisteredProviderIds() — building
+ * the catalogue from either alone misreports known candidates (observed:
+ * a session whose entire known list was `llama.cpp` while NVIDIA models
+ * sat in the store). First occurrence wins; junk rows are skipped.
+ */
+export function buildCatalog(
+	models: readonly { readonly provider?: unknown }[],
+	registeredIds: readonly string[],
+	displayNameFor: (id: string) => string,
+): { id: string; display: string }[] {
+	const byId = new Map<string, string>();
+	const add = (id: unknown) => {
+		if (typeof id !== "string" || !id) return;
+		if (!byId.has(id)) byId.set(id, displayNameFor(id) || id);
+	};
+	for (const m of models) add(m?.provider);
+	for (const id of registeredIds) add(id);
+	return [...byId].map(([id, display]) => ({ id, display }));
+}
+
 // ── Timer with abort support ────────────────────────────────────────────
 
 /**
@@ -589,10 +612,16 @@ export default function providerThrottle(pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			let catalog: { id: string; display: string }[] = [];
 			try {
-				catalog = ctx.modelRegistry.getRegisteredProviderIds().map((id) => ({
-					id,
-					display: ctx.modelRegistry.getProviderDisplayName(id) || id,
-				}));
+				const registry = ctx.modelRegistry;
+				const models =
+					typeof registry.getAll === "function"
+						? registry.getAll()
+						: []; // older hosts: registered ids remain authoritative
+				catalog = buildCatalog(
+					models,
+					registry.getRegisteredProviderIds(),
+					(id) => registry.getProviderDisplayName(id) || id,
+				);
 			} catch {
 				// Degraded registry read: explicit provider ids still work.
 			}
