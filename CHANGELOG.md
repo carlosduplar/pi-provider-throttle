@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0 — 2026-09-08
+- Added: `provider_throttle` agent tool (registerTool) — say `restrict NVIDIA requests to 40 RPM`: free-text provider hints resolve against pi's live model registry (never guessed), rpm converts to a conservative seconds floor, and writes are confirm-gated and routed through the same refusing/atomic save() as `/throttle`. `action: "list"` reports every registered provider with its current pacing.
+- Docs: SEO tuning across README/npm metadata (throttling / rate limit / 429 / NVIDIA free tier wording), new “Or just ask pi” onboarding section.
+- Fix: `delay` now detaches its abort listener on normal completion, so long-lived signals no longer accumulate stale listeners (and Node's MaxListeners warning) across paced calls.
+- Fix: `/throttle <provider> <seconds>` refuses to save while the write-target config file is unreadable, instead of silently flattening the user's hand-edited content. A corrupt legacy read path still heals by writing a fresh preferred file.
+- Fix: successful live edits refresh the status strip immediately instead of waiting for the next `session_start`.
+- Fix: assistant response-end stamps use the finished message's own `provider` field, keeping streaming-aware pacing symmetric with request gating even when `ctx.model` rotated mid-stream.
+- Refactor: each provider request reads the config once (attribution and interval now derive from the same load); the write path is derived from a single `configPaths()` call. `ThrottleStore.intervalMsFor()` was removed in the process — compute intervals from `view().cfg` via `intervalFor()`.
+- Chore: `prepublishOnly` gate (typecheck + tests) added; regression tests cover listener hygiene, refused saves, status refresh, and response-end anchors.
+
 ## 1.0.0 — 2026-09-08
 
 Initial release.

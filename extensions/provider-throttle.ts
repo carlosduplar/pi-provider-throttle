@@ -36,7 +36,15 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { Type } from "typebox";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -44,8 +52,19 @@ export const ENV_VAR = "PI_PROVIDER_THROTTLE_CONFIG";
 export const STATUS_KEY = "provider-throttle";
 export const MAX_TIMER_MS = 2_147_483_647;
 
-export const PREFERRED_CONFIG_PATH = join(homedir(), ".pi", "agent", "provider-throttle.json");
-export const LEGACY_CONFIG_PATH = join(homedir(), ".pi", "agent", "extensions", "provider-throttle.json");
+export const PREFERRED_CONFIG_PATH = join(
+	homedir(),
+	".pi",
+	"agent",
+	"provider-throttle.json",
+);
+export const LEGACY_CONFIG_PATH = join(
+	homedir(),
+	".pi",
+	"agent",
+	"extensions",
+	"provider-throttle.json",
+);
 
 export interface Config {
 	providers?: Record<string, unknown>;
@@ -63,7 +82,10 @@ export type LoadResult =
  * Path pair used for reading and where writes are allowed to land.
  * With ENV_VAR set it wins exclusively in both roles.
  */
-export function configPaths(env: NodeJS.ProcessEnv = process.env): { read: string; write: string } {
+export function configPaths(env: NodeJS.ProcessEnv = process.env): {
+	read: string;
+	write: string;
+} {
 	const override = env[ENV_VAR];
 	if (override) {
 		const abs = resolve(override);
@@ -105,8 +127,10 @@ export function resolveProvider(
 	const fromCtx = ctx.model?.provider;
 	if (typeof fromCtx === "string" && fromCtx.length > 0) return fromCtx;
 
-	const requestModel = (payload as { model?: unknown } | null | undefined)?.model;
-	if (typeof requestModel !== "string" || requestModel.length === 0) return undefined;
+	const requestModel = (payload as { model?: unknown } | null | undefined)
+		?.model;
+	if (typeof requestModel !== "string" || requestModel.length === 0)
+		return undefined;
 
 	const keys = cfg.modelPrefixes ?? {};
 	// Exact key match, when present, trumps prefix matches.
@@ -121,9 +145,67 @@ export function resolveProvider(
 		// that can only be a config mistake, so treat it as inert.
 		if (key.length === 0) continue;
 		if (!requestModel.startsWith(key)) continue;
-		if (!best || key.length > best.len) best = { len: key.length, provider: target };
+		if (!best || key.length > best.len)
+			best = { len: key.length, provider: target };
 	}
 	return best?.provider;
+}
+
+// ── Natural-language pacing helpers (custom tool) ────────────────────
+
+/**
+ * RPM → a comfortably rounded seconds floor: 60/rpm, one +25% notch, rounded
+ * to the nearest 0.5s (bounded at 0.5s min so absurd rates still pace).
+ * Undefined unless `rpm` is a usable positive number.
+ */
+export function secondsFromRpm(rpm: unknown): number | undefined {
+	const rate = typeof rpm === "number" ? rpm : Number(rpm);
+	if (!Number.isFinite(rate) || rate <= 0 || rate > 1_000_000) return undefined;
+	return Math.max(0.5, Math.round((60 / rate) * 1.25 * 2) / 2);
+}
+
+export type HintMatch =
+	| { kind: "unique"; id: string }
+	| { kind: "ambiguous"; ids: string[] }
+	| { kind: "none" };
+
+/**
+ * Resolve a human provider hint ("NVIDIA", "nvidia nim", ...) against the
+ * registered-catalogue entries. Tiered scoring: exact id/display (case-
+ * insensitive) beats prefix match beats containment; ties inside the winning
+ * tier are ambiguous. No match at all is "none".
+ */
+export function matchProviderHint(
+	hint: string,
+	providers: readonly { readonly id: string; readonly display: string }[],
+): HintMatch {
+	const q = hint.trim().toLowerCase();
+	if (!q) return { kind: "none" };
+
+	const score = (entry: { id: string; display: string }): number => {
+		const id = entry.id.toLowerCase();
+		const display = entry.display.toLowerCase();
+		if (id === q || display === q) return 3;
+		if (id.startsWith(q) || display.startsWith(q)) return 2;
+		if (id.includes(q) || display.includes(q)) return 1;
+		return 0;
+	};
+
+	let best = 0;
+	const winners: string[] = [];
+	for (const entry of providers) {
+		const s = score(entry);
+		if (s === 0) continue;
+		if (s > best) {
+			best = s;
+			winners.length = 0;
+		}
+		if (s === best) winners.push(entry.id);
+	}
+	if (best === 0) return { kind: "none" };
+	return winners.length === 1
+		? { kind: "unique", id: winners[0]! }
+		: { kind: "ambiguous", ids: winners };
 }
 
 // ── Timer with abort support ────────────────────────────────────────────
@@ -133,7 +215,10 @@ export function resolveProvider(
  * resolution here would wedge the before-provider handler, so abort always
  * resolves — the caller re-checks the signal and skips stamping.
  */
-export function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
+export function delay(
+	ms: number,
+	signal: AbortSignal | undefined,
+): Promise<void> {
 	return new Promise((resolveOut) => {
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		const abort = () => {
@@ -144,6 +229,9 @@ export function delay(ms: number, signal: AbortSignal | undefined): Promise<void
 		timer = setTimeout(
 			() => {
 				timer = undefined;
+				// Normal completion must detach the abort listener: a long-lived signal
+				// would otherwise accumulate one stale listener per paced call.
+				signal?.removeEventListener("abort", abort);
 				resolveOut();
 			},
 			Math.min(ms, MAX_TIMER_MS),
@@ -159,7 +247,10 @@ interface ProviderState {
 	lastAssistantAtMs: number;
 }
 
-export type NotifyFn = (message: string, type?: "info" | "warning" | "error") => void;
+export type NotifyFn = (
+	message: string,
+	type?: "info" | "warning" | "error",
+) => void;
 
 export function describeError(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);
@@ -252,12 +343,6 @@ export function createThrottle(options: {
 			.join(", ");
 
 	return {
-		/** Effective interval in ms (0 = off) for a provider. */
-		intervalMsFor(provider: string): number {
-			const res = load();
-			return res.ok ? intervalFor(res.cfg, provider) * 1000 : 0;
-		},
-
 		/** Raw view for the /throttle display. */
 		view(): { cfg: Config; ok: boolean; path: string; error?: unknown } {
 			const res = load();
@@ -314,8 +399,24 @@ export function createThrottle(options: {
 		 * Saves target the write path even while reads still resolve to the
 		 * legacy file (migration tail), which is why the memo is keyed by path.
 		 */
-		save(mutator: (cfg: Config) => void): { ok: true } | { ok: false; attemptedPath: string; error: unknown } {
+		save(
+			mutator: (cfg: Config) => void,
+		): { ok: true } | { ok: false; attemptedPath: string; error: unknown } {
 			const readRes = load();
+			// Never clobber an unreadable SAVE TARGET: the outage warning told the
+			// user to fix exactly that file, so flattening it here would destroy
+			// their hand-edited near-miss content. (A read failure on a different
+			// path — e.g. a corrupt legacy file while the preferred default is
+			// missing — still heals by writing a fresh, clean target.)
+			if (!readRes.ok && readRes.path === options.writePath) {
+				return {
+					ok: false,
+					attemptedPath: options.writePath,
+					error: new Error(
+						`refusing to save over unreadable ${options.writePath} (${describeError(readRes.error)}) — fix or delete the file first`,
+					),
+				};
+			}
 			const base = readRes.ok ? readRes.cfg : {};
 			const tmp = `${options.writePath}.${process.pid}.tmp`;
 			try {
@@ -356,21 +457,22 @@ export default function providerThrottle(pi: ExtensionAPI) {
 	// io hooks until a dialog-capable context arrives (session_start/commands);
 	// earlier load-time warnings get flushed there instead of black-holed.
 	let uiHook: NotifyFn | undefined;
-	let deferred: { message: string; type?: "info" | "warning" | "error" }[] = [];
+	const deferred: { message: string; type?: "info" | "warning" | "error" }[] =
+		[];
 	const notify: NotifyFn = (message, type) => {
-		uiHook ? uiHook(message, type) : deferred.push({ message, type });
+		if (uiHook) {
+			uiHook(message, type);
+		} else {
+			deferred.push({ message, type });
+		}
 	};
 
-	let writePathCache = configPaths().write;
+	// The write target is invariant for the process (env override, else the
+	// preferred default), so derive it from configPaths — the rule lives once.
+	const writePath = configPaths(process.env).write;
 	const store = createThrottle({
-		readPath: () => {
-			const { read, write } = configPaths(process.env);
-			writePathCache = write;
-			return read;
-		},
-		writePath: process.env[ENV_VAR]
-			? resolve(String(process.env[ENV_VAR]))
-			: PREFERRED_CONFIG_PATH,
+		readPath: () => configPaths(process.env).read,
+		writePath,
 		notify,
 	});
 
@@ -386,10 +488,14 @@ export default function providerThrottle(pi: ExtensionAPI) {
 				const rows = Object.entries(view.cfg.providers ?? {}).map(
 					([p]) => `  ${p}: ${intervalFor(view.cfg, p)}s`,
 				);
-				const body = rows.length ? `\n${rows.join("\n")}` : "  (nothing configured)";
-				const health = view.ok ? "" : `  [unreadable: ${describeError(view.error)}]`;
+				const body = rows.length
+					? `\n${rows.join("\n")}`
+					: "  (nothing configured)";
+				const health = view.ok
+					? ""
+					: `  [unreadable: ${describeError(view.error)}]`;
 				ctx.ui.notify(
-					`provider-throttle\n${body}\nread : ${view.path}${health}\nwrite: ${writePathCache}`,
+					`provider-throttle\n${body}\nread : ${view.path}${health}\nwrite: ${writePath}`,
 					view.ok ? "info" : "warning",
 				);
 				return;
@@ -398,14 +504,17 @@ export default function providerThrottle(pi: ExtensionAPI) {
 			if (parts[0] === "config") {
 				const view = store.view();
 				ctx.ui.notify(
-					`read : ${view.path}\nwrite: ${writePathCache}\nparse: ${view.ok ? "ok" : `FAILED (${describeError(view.error)})`}`,
+					`read : ${view.path}\nwrite: ${writePath}\nparse: ${view.ok ? "ok" : `FAILED (${describeError(view.error)})`}`,
 					view.ok ? "info" : "warning",
 				);
 				return;
 			}
 
 			if (parts.length !== 2) {
-				ctx.ui.notify("Usage: /throttle <provider> <seconds|0>  —  or:  /throttle config", "error");
+				ctx.ui.notify(
+					"Usage: /throttle <provider> <seconds|0>  —  or:  /throttle config",
+					"error",
+				);
 				return;
 			}
 
@@ -428,6 +537,8 @@ export default function providerThrottle(pi: ExtensionAPI) {
 				);
 				return;
 			}
+			// Live edits must reach the status strip now, not at next session_start.
+			ctx.ui.setStatus(STATUS_KEY, store.statusText());
 			ctx.ui.notify(
 				seconds > 0
 					? `${provider}: min interval ${seconds}s between provider calls (persisted)`
@@ -437,12 +548,185 @@ export default function providerThrottle(pi: ExtensionAPI) {
 		},
 	});
 
+	// ── provider_throttle custom tool ─────────────────────────────────────
+	// Lets a session say "restrict NVIDIA to 40 RPM". Free-text hints resolve
+	// against pi's live model registry before any write; rates arrive as rpm
+	// (floored conservatively) or explicit seconds; persistence reuses the
+	// same atomic, refuse-on-corrupt save() the /throttle command uses.
+	pi.registerTool({
+		name: "provider_throttle",
+		label: "Provider throttle",
+		description:
+			'Read or change provider-throttle pacing (seconds between calls). `set` resolves a free-text provider hint (e.g. "NVIDIA") against pi\'s model registry before writing; rates are given as rpm or as exact seconds.',
+		promptSnippet:
+			'Configure provider pacing from phrasing like "restrict NVIDIA to 40 RPM" — resolves provider ids from the model registry',
+		promptGuidelines: [
+			"Prefer provider_throttle over editing provider-throttle.json by hand; resolve unknown provider hints with `list` rather than guessing an id.",
+		],
+		parameters: Type.Object({
+			action: Type.Union([Type.Literal("list"), Type.Literal("set")], {
+				description:
+					'"list" shows registered providers and active pacing; "set" changes one provider\'s interval',
+			}),
+			provider: Type.Optional(
+				Type.String({
+					description:
+						'Provider as the user names it ("NVIDIA", "nim free tier", or the exact provider id)',
+				}),
+			),
+			rpm: Type.Optional(
+				Type.Number({
+					description: "Requests-per-minute ceiling to pace to (e.g. 40)",
+				}),
+			),
+			seconds: Type.Optional(
+				Type.Number({
+					description:
+						"Exact seconds between calls; overrides rpm when both are given; 0 disables pacing",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			let catalog: { id: string; display: string }[] = [];
+			try {
+				catalog = ctx.modelRegistry.getRegisteredProviderIds().map((id) => ({
+					id,
+					display: ctx.modelRegistry.getProviderDisplayName(id) || id,
+				}));
+			} catch {
+				// Degraded registry read: explicit provider ids still work.
+			}
+
+			if (params.action !== "set") {
+				const view = store.view();
+				const health = view.ok ? "" : "  [config unreadable]";
+				const lines = catalog.map(({ id, display }) => {
+					const seconds = intervalFor(view.cfg, id);
+					return `- ${id} (${display}): ${seconds > 0 ? `${seconds}s` : "off"}${health}`;
+				});
+				const body = lines.length
+					? `providers\n${lines.join("\n")}\nwrite path: ${writePath}`
+					: `no providers registered in this session\nwrite path: ${writePath}`;
+				return {
+					content: [
+						{
+							type: "text",
+							text: body,
+						},
+					],
+					details: {},
+				};
+			}
+
+			const hint = (params.provider ?? "").trim();
+			let seconds: number | undefined;
+			let viaRpm = false;
+			if (
+				typeof params.seconds === "number" &&
+				Number.isFinite(params.seconds) &&
+				params.seconds >= 0
+			) {
+				seconds = normalizeInterval(params.seconds); // 0 authored here → disable
+			} else if (
+				typeof params.rpm === "number" &&
+				Number.isFinite(params.rpm) &&
+				params.rpm > 0
+			) {
+				seconds = secondsFromRpm(params.rpm);
+				viaRpm = seconds !== undefined;
+			}
+			if (!hint || seconds === undefined) {
+				return {
+					content: [
+						{
+							type: "text",
+							text:
+								'Usage: provider_throttle { action: "set", provider: "NVIDIA", rpm: 40 } — or give seconds instead; seconds: 0 disables pacing.',
+						},
+					],
+					details: {},
+				};
+			}
+
+			const match = matchProviderHint(hint, catalog);
+			if (match.kind === "none" || match.kind === "ambiguous") {
+				const known = catalog.length
+					? `Known: ${catalog.map((c) => c.id).join(", ")}`
+					: "No providers are registered in this session.";
+				const text =
+					match.kind === "none"
+						? `No provider resembles "${hint}". ${known}`
+						: `"${hint}" is a prefix of several providers: ${match.ids.join(", ")}. Ask the user which one, then call again.`;
+				return { content: [{ type: "text", text }], details: {} };
+			}
+			const providerId = match.id;
+
+			// Writes leave this session: one user-confirmed gate before persisting.
+			if (ctx.hasUI) {
+				const approved = await ctx.ui.confirm(
+					"provider-throttle",
+					`Pace "${providerId}" at ${seconds}s minimum interval${viaRpm ? ` (floor for ${params.rpm} RPM)` : ""}? Persisted to ${writePath}`,
+				);
+				if (!approved) {
+					return {
+						content: [
+							{ type: "text", text: `Declined — "${providerId}" config untouched.` },
+						],
+						details: { applied: false, provider: providerId },
+					};
+				}
+			}
+
+			const outcome = store.save((cfg) => {
+				cfg.providers ??= {};
+				const table = cfg.providers;
+				if (seconds > 0) table[providerId] = seconds;
+				else delete table[providerId];
+			});
+			if (!outcome.ok) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Could not persist (${outcome.attemptedPath}): ${describeError(outcome.error)}`,
+						},
+					],
+					details: { applied: false, provider: providerId },
+				};
+			}
+
+			ctx.ui.setStatus(STATUS_KEY, store.statusText());
+			ctx.ui.notify(
+				seconds > 0
+					? `${providerId}: min interval ${seconds}s between provider calls (persisted)`
+					: `provider-throttle disabled for ${providerId} (persisted)`,
+				"info",
+			);
+			return {
+				content: [
+					{
+						type: "text",
+						text:
+							seconds > 0
+								? `${providerId} now paced: at least ${seconds}s between calls${viaRpm ? ` (floor for ${params.rpm} RPM)` : ""}. Check /throttle.`
+								: `Pacing disabled for ${providerId}. Check /throttle.`,
+					},
+				],
+				details: { applied: true, provider: providerId, seconds },
+			};
+		},
+	});
+
 	pi.on("before_provider_request", async (event, ctx) => {
+		// One load serves both attribution and the interval lookup: the same
+		// bytes decide both, so a mid-flight config edit cannot split them.
 		const view = store.view();
-		const provider = view.ok ? resolveProvider(event.payload, ctx, view.cfg) : undefined;
+		if (!view.ok) return;
+
+		const provider = resolveProvider(event.payload, ctx, view.cfg);
 		if (!provider) return;
 
-		const intervalMs = store.intervalMsFor(provider);
+		const intervalMs = intervalFor(view.cfg, provider) * 1000;
 		if (!(intervalMs > 0)) return;
 
 		await store.runGated(provider, async () => {
@@ -450,7 +734,8 @@ export default function providerThrottle(pi: ExtensionAPI) {
 			try {
 				while (!ctx.signal?.aborted) {
 					const intended = store.anchorMs(provider);
-					const remaining = intended === 0 ? 0 : Math.max(0, intervalMs - (Date.now() - intended));
+					const remaining =
+						intended === 0 ? 0 : Math.max(0, intervalMs - (Date.now() - intended));
 					if (remaining === 0) break;
 					if (!showingWaiting) {
 						ctx.ui.setWorkingMessage(
@@ -469,9 +754,12 @@ export default function providerThrottle(pi: ExtensionAPI) {
 		});
 	});
 
-	pi.on("message_end", (event, ctx) => {
-		if (event.message.role !== "assistant") return;
-		store.recordAssistant(ctx.model?.provider);
+	pi.on("message_end", (event) => {
+		const message = event.message;
+		if (message.role !== "assistant") return;
+		// The finished message names its own provider — response-end stamps stay
+		// symmetric with request gating even if ctx.model rotated mid-stream.
+		store.recordAssistant(message.provider);
 	});
 
 	pi.on("session_start", (_, ctx) => {
