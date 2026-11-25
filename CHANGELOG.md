@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.3 — 2026-11-25
+
+- Security: devDependency `@earendil-works/pi-coding-agent` 0.85.1 → ^1.6.0, clearing all open Dependabot alerts (undici, minimatch/brace-expansion, fast-xml-parser were transitive via the old agent tree). `npm audit` reports 0 vulnerabilities. No extension-code changes — typecheck and all 39 tests pass unchanged against the new agent types.
+
 ## 1.1.2 — 2026-11-25
 
 - Fix: `session_start` no longer emits a second outage notice for an unreadable config — `load()` already warns once through the notify hook, so the duplicate (with mismatched case) is gone.
