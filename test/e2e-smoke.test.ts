@@ -188,6 +188,7 @@ test("provider-throttle end-to-end", async (t) => {
 		"abort mid-wait resolves promptly and does not burn the slot",
 		async () => {
 			const ac = new AbortController();
+				setTimeout(() => ac.abort(), 50);
 			const wait = measure(() => fire(rt, PRE, ctxOf(rt, { signal: ac.signal })));
 			const outcome = (await Promise.race([
 				wait,
@@ -196,6 +197,14 @@ test("provider-throttle end-to-end", async (t) => {
 				),
 			])) as unknown as number | { hung: boolean };
 			assert.ok(typeof outcome !== "object", "handler wedged after abort");
+			assert.ok(
+				ac.signal.aborted,
+				"test must actually abort (otherwise it passes with no abort)",
+			);
+			assert.ok(
+				(outcome as number) < INTERVAL_MS * 0.75,
+				`abort did not shortcut the wait (took ${(outcome as number).toFixed(0)}ms; interval ${INTERVAL_MS}ms)`,
+			);
 
 			const after = await measure(() => fire(rt, PRE, ctxOf(rt)));
 			assert.ok(

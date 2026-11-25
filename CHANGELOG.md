@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.2 — 2026-11-25
+
+- Fix: `session_start` no longer emits a second outage notice for an unreadable config — `load()` already warns once through the notify hook, so the duplicate (with mismatched case) is gone.
+- Fix: `save()` preserves unrelated top-level config keys (e.g. $schema, future options) instead of silently deleting them; `sanitize()` now carries unknown keys through verbatim.
+- Fix: `provider_throttle` tool isolates each registry source (`getAll()`, `getRegisteredProviderIds()`, per-id display-name lookups) so one throwing getter no longer empties the whole catalog; an empty catalog falls back to trusting the explicit id verbatim.
+- Tests: delay abort tests now prove the abort path resolved (signal-aborted + lower-bound timing) instead of passing via timer overflow; the e2e abort-mid-wait test actually aborts and asserts the shortcut.
+
 ## 1.1.1 — 2026-09-08
 
 - Fix: `provider_throttle` builds its provider catalogue from every model visible to the session — `registry.getAll()` unioned with `getRegisteredProviderIds()` — so store-scoped providers (e.g. NVIDIA configured via `models-store.json`) resolve to their exact id instead of bouncing with `Known: llama.cpp`. Reads degrade to registered ids on hosts without `getAll()`; unit + e2e coverage pins the union, dedupe, and failure-skip behavior.

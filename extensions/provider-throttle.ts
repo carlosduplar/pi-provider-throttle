@@ -345,16 +345,26 @@ export function createThrottle(options: {
 	};
 
 	const sanitize = (parsed: Config): Config => {
+		const src =
+			parsed && typeof parsed === "object" && !Array.isArray(parsed)
+				? (parsed as Record<string, unknown>)
+				: {};
 		const pick = (v: unknown) =>
 			v && typeof v === "object" && !Array.isArray(v)
 				? Object.fromEntries(Object.entries(v as Record<string, unknown>))
 				: undefined;
-		const out: Config = {};
-		const providers = pick(parsed?.providers);
+		// Preserve unrelated top-level keys (e.g. $schema, future options):
+		// save() spreads the sanitized view, so dropping them here would
+		// silently delete them on the next write.
+		const out: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(src)) {
+			if (k !== "providers" && k !== "modelPrefixes") out[k] = v;
+		}
+		const providers = pick(src.providers);
 		if (providers) out.providers = providers;
-		const modelPrefixes = pick(parsed?.modelPrefixes);
+		const modelPrefixes = pick(src.modelPrefixes);
 		if (modelPrefixes) out.modelPrefixes = modelPrefixes;
-		return out;
+		return out as Config;
 	};
 
 	/** Human summary of providers with an active interval (status strip). */
@@ -440,12 +450,22 @@ export function createThrottle(options: {
 					),
 				};
 			}
-			const base = readRes.ok ? readRes.cfg : {};
+			const base = (readRes.ok ? readRes.cfg : {}) as Config &
+				Record<string, unknown>;
 			const tmp = `${options.writePath}.${process.pid}.tmp`;
 			try {
 				mkdirSync(dirname(options.writePath), { recursive: true });
-				const cfg: Config = { ...base, providers: { ...(base.providers ?? {}) } };
-				if (base.modelPrefixes) cfg.modelPrefixes = base.modelPrefixes;
+				// base is the sanitized view, which carries unrelated top-level
+				// keys ($schema, future options) through verbatim — spreading it
+				// first preserves them instead of silently deleting them.
+				const cfg: Config = {
+					...base,
+					providers: { ...((base.providers as Record<string, unknown>) ?? {}) },
+				};
+				if (base.modelPrefixes)
+					cfg.modelPrefixes = {
+						...(base.modelPrefixes as Record<string, unknown>),
+					};
 				mutator(cfg);
 				writeFileSync(tmp, `${JSON.stringify(cfg, null, 2)}\n`, "utf-8");
 				renameSync(tmp, options.writePath);
@@ -610,20 +630,51 @@ export default function providerThrottle(pi: ExtensionAPI) {
 			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			// Each registry source is isolated: a single throwing getter or
+			// display-name lookup must not discard the sources that succeeded.
 			let catalog: { id: string; display: string }[] = [];
 			try {
-				const registry = ctx.modelRegistry;
-				const models =
-					typeof registry.getAll === "function"
-						? registry.getAll()
-						: []; // older hosts: registered ids remain authoritative
-				catalog = buildCatalog(
-					models,
-					registry.getRegisteredProviderIds(),
-					(id) => registry.getProviderDisplayName(id) || id,
-				);
+				const registry = ctx.modelRegistry as
+					| {
+							getAll?: () => unknown;
+							getRegisteredProviderIds?: () => unknown;
+							getProviderDisplayName?: (id: string) => unknown;
+						}
+					| undefined;
+				let models: readonly { readonly provider?: unknown }[] = [];
+				try {
+					// older hosts may lack getAll: registered ids remain authoritative
+					const raw =
+						typeof registry?.getAll === "function" ? registry.getAll() : [];
+					if (Array.isArray(raw))
+						models = raw as readonly { readonly provider?: unknown }[];
+				} catch {
+					// store-scoped models unavailable — registered ids still apply
+				}
+				let registeredIds: readonly string[] = [];
+				try {
+					const rawIds =
+						typeof registry?.getRegisteredProviderIds === "function"
+							? registry.getRegisteredProviderIds()
+							: [];
+					if (Array.isArray(rawIds))
+						registeredIds = rawIds.filter(
+							(id): id is string => typeof id === "string" && id.length > 0,
+						);
+				} catch {
+					// eagerly registered ids unavailable — store models still apply
+				}
+				const displayNameFor = (id: string): string => {
+					try {
+						const name = registry?.getProviderDisplayName?.(id);
+						return typeof name === "string" && name.length > 0 ? name : id;
+					} catch {
+						return id;
+					}
+				};
+				catalog = buildCatalog(models, registeredIds, displayNameFor);
 			} catch {
-				// Degraded registry read: explicit provider ids still work.
+				// Last resort: keep whatever entries succeeded (possibly none).
 			}
 
 			if (params.action !== "set") {
@@ -678,17 +729,21 @@ export default function providerThrottle(pi: ExtensionAPI) {
 			}
 
 			const match = matchProviderHint(hint, catalog);
-			if (match.kind === "none" || match.kind === "ambiguous") {
+			// Degraded registry (empty catalog): trust an explicit id verbatim so
+			// a broken display-name lookup or registry outage does not block writes.
+			let providerId: string | undefined;
+			if (match.kind === "unique") providerId = match.id;
+			else if (match.kind === "none" && catalog.length === 0) providerId = hint;
+			if (!providerId) {
 				const known = catalog.length
 					? `Known: ${catalog.map((c) => c.id).join(", ")}`
 					: "No providers are registered in this session.";
 				const text =
 					match.kind === "none"
 						? `No provider resembles "${hint}". ${known}`
-						: `"${hint}" is a prefix of several providers: ${match.ids.join(", ")}. Ask the user which one, then call again.`;
+						: `"${hint}" is a prefix of several providers: ${(match as { ids: string[] }).ids.join(", ")}. Ask the user which one, then call again.`;
 				return { content: [{ type: "text", text }], details: {} };
 			}
-			const providerId = match.id;
 
 			// Writes leave this session: one user-confirmed gate before persisting.
 			if (ctx.hasUI) {
@@ -794,14 +849,11 @@ export default function providerThrottle(pi: ExtensionAPI) {
 	pi.on("session_start", (_, ctx) => {
 		uiHook ??= (message, type) => ctx.ui.notify(message, type);
 		const pending = deferred.splice(0);
-		const view = store.view();
-		if (!view.ok) {
-			ctx.ui.notify(
-				`provider-throttle: cannot parse ${view.path} — pacing disabled until fixed (${describeError(view.error)})`,
-				"warning",
-			);
-		}
 		for (const n of pending) ctx.ui.notify(n.message, n.type);
+		// NOTE: no explicit unreadable-config notice here - load() already
+		// warns once through the notify hook (uppercase DISABLED wording).
+		// A second session_start notice would double-notify and bypass
+		// warn-once.
 		ctx.ui.setStatus(STATUS_KEY, store.statusText());
 	});
 

@@ -112,9 +112,18 @@ test("matchProviderHint tiers exact → prefix → contains; ties are ambiguous"
 });
 
 test("buildCatalog unions store-scoped models with eagerly registered providers", () => {
-	const display: Record<string, string> = { nvidia: "NVIDIA NIM", "llama.cpp": "llama.cpp" };
+	const display: Record<string, string> = {
+		nvidia: "NVIDIA NIM",
+		"llama.cpp": "llama.cpp",
+	};
 	const cat = buildCatalog(
-		[{ provider: "nvidia" }, { provider: "nvidia" }, { provider: "mimo" }, {}, { provider: 7 }],
+		[
+			{ provider: "nvidia" },
+			{ provider: "nvidia" },
+			{ provider: "mimo" },
+			{},
+			{ provider: 7 },
+		],
 		["llama.cpp"],
 		(id) => display[id] ?? id,
 	);
@@ -407,9 +416,16 @@ test("delay resolves immediately on abort even for a giant span", async () => {
 	setTimeout(() => ac.abort(), 40);
 	const t0 = Date.now();
 	await stuck;
+	// Without the MAX_TIMER_MS cap Node overflows to ~1ms and resolves BEFORE
+	// the abort fires — so require proof the abort path did the resolving.
 	assert.ok(
-		Date.now() - t0 < 150,
-		`abort did not resolve promptly (took ${Date.now() - t0}ms)`,
+		ac.signal.aborted,
+		"delay resolved before abort fired (timer overflow, not the abort path)",
+	);
+	const elapsed = Date.now() - t0;
+	assert.ok(
+		elapsed >= 30 && elapsed < 150,
+		`abort did not resolve promptly (took ${elapsed}ms)`,
 	);
 });
 
@@ -429,5 +445,13 @@ test("delay detaches its abort listener on normal completion", async () => {
 	setTimeout(() => ac.abort(), 20);
 	const t0 = Date.now();
 	await stuck;
-	assert.ok(Date.now() - t0 < 150, "abort no longer resolves after detach");
+	assert.ok(
+		ac.signal.aborted,
+		"sanity delay resolved before abort fired (timer overflow, not abort)",
+	);
+	const elapsed = Date.now() - t0;
+	assert.ok(
+		elapsed >= 10 && elapsed < 150,
+		"abort no longer resolves after detach",
+	);
 });
